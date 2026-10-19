@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Study Arcade</title>
+<style>
+  :root { --bg:#0b0f17; --panel:#151b27; --line:#232c3d; --text:#e8ecf4; --muted:#8a93a8; --accent:#3aa6ff; --fav:#ffb84d; --ok:#3ecf8e; --danger:#c62839; }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) { --bg:#f4f6fb; --panel:#ffffff; --line:#dde2ee; --text:#18202e; --muted:#5d6780; }
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  button, input { font:inherit; }
+  .hidden { display:none !important; }
+
+  /* Library */
+  #library { min-height:100%; display:flex; flex-direction:column; }
+  header { position:sticky; top:0; z-index:5; background:var(--panel); border-bottom:1px solid var(--line); padding:10px 14px; }
+  .top { display:flex; align-items:center; gap:8px; }
+  .top h1 { font-size:17px; margin:0; flex:1; }
+  .top small { display:block; color:var(--muted); font-size:12px; font-weight:normal; }
+  .btn { border:1px solid var(--line); background:transparent; color:var(--text); padding:7px 11px; border-radius:999px; cursor:pointer; font-size:13px; white-space:nowrap; }
+  .btn.primary { background:var(--ok); color:#06210f; border-color:var(--ok); font-weight:600; }
+  .btn.danger { background:var(--danger); color:#fff; border-color:var(--danger); font-weight:600; }
+  .btn.on { border-color:var(--accent); background:rgba(58,166,255,.14); }
+  .row { display:flex; gap:8px; margin-top:10px; }
+  #search { flex:1; min-width:0; padding:10px 12px; background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; font-size:16px; }
+  .tabs { display:flex; gap:6px; margin-top:10px; overflow-x:auto; padding-bottom:2px; }
+  .tabs .btn { flex:0 0 auto; }
+  .count { color:var(--muted); font-size:12px; margin:0 0 4px; }
+  main { padding:14px; max-width:1200px; width:100%; margin:0 auto; flex:1; }
+  h2 { font-size:16px; margin:18px 0 10px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; position:relative; color:var(--text); padding:0; text-align:left; }
+  .card:hover, .card:focus-visible { border-color:var(--accent); outline:none; }
+  .thumb { width:100%; aspect-ratio:4/3; background:#1d2535; display:block; object-fit:cover; opacity:0; transition:opacity .3s; }
+  .thumb.loaded { opacity:1; }
+  .card .name { padding:7px 9px 2px; font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .card .sub { padding:0 9px 9px; font-size:11px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .star { position:absolute; top:6px; right:6px; font-size:16px; color:var(--fav); background:rgba(0,0,0,.45); border-radius:6px; padding:0 4px; }
+  .pop { position:absolute; top:6px; left:6px; font-size:10px; font-weight:700; background:var(--accent); color:#fff; padding:2px 6px; border-radius:4px; }
+  .empty { color:var(--muted); font-style:italic; padding:20px 0; }
+  .more { display:block; margin:16px auto; }
+  .foot { color:var(--muted); font-size:12px; text-align:center; padding:20px 10px 30px; }
+
+  /* Player */
+  #player { position:fixed; inset:0; background:#000; display:flex; flex-direction:column; z-index:10; }
+  #player.hidden { display:none !important; }
+  .ptop { display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--panel); border-bottom:1px solid var(--line); }
+  .ptop .title { flex:1; font-weight:600; font-size:15px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .frame-wrap { flex:1; position:relative; background:#000; }
+  .frame-wrap iframe { z-index:1; position:absolute; inset:0; width:100%; height:100%; border:0; }
+  .cover { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; background:var(--bg); color:var(--text); text-align:center; padding:20px; }
+  .cover img { max-width:min(360px,80%); border-radius:12px; border:1px solid var(--line); }
+  .cover .btn { font-size:16px; padding:11px 26px; }
+</style>
+</head>
+<body>
+
+<div id="library">
+  <header>
+    <div class="top">
+      <h1>Study Arcade<small id="status">Loading games…</small></h1>
+      <button class="btn" id="resetBtn" title="Clear saved progress">Reset</button>
+      <button class="btn danger" id="quickExit">Quick Exit</button>
+    </div>
+    <div class="row">
+      <input id="search" type="search" placeholder="Search games ( / )" aria-label="Search games">
+      <button class="btn" id="randomBtn" title="Random (R)">Random</button>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="btn on" data-f="all">All</button>
+      <button class="btn" data-f="popular">Popular</button>
+      <button class="btn" data-f="favorites">Favorites</button>
+      <button class="btn" data-f="recent">Recent</button>
+    </div>
+  </header>
+  <main>
+    <div class="count" id="count"></div>
+    <div class="grid" id="grid"></div>
+    <button class="btn more hidden" id="moreBtn">Show more</button>
+    <div class="foot">Plays, favorites and recent games are saved in this browser. F = fullscreen.</div>
+  </main>
+</div>
+
+<div id="player" class="hidden">
+  <div class="ptop">
+    <button class="btn" id="backBtn">← Back</button>
+    <div class="title" id="pTitle"></div>
+    <button class="btn" id="pFav">☆ Favorite</button>
+    <button class="btn" id="pFull" title="Fullscreen (F)">Fullscreen</button>
+  </div>
+  <div class="frame-wrap">
+    <div class="cover" id="cover">
+      <img id="pThumb" alt="">
+      <div id="pPlays" style="color:var(--muted);font-size:13px"></div>
+      <button class="btn primary" id="playBtn">Play</button>
+    </div>
+    <iframe id="frame" allow="fullscreen; autoplay; gamepad" allowfullscreen referrerpolicy="no-referrer-when-downgrade"></iframe>
+  </div>
+</div>
+
+<script>
+(function () {
+  const KEY = 'study-arcade-v3';
+  const SITE = 'https://study20.lol';
+  const GAMES = [{"n": "10 Minutes Till Dawn", "l": "1", "p": 0}, {"n": "100 Doors Puzzle Box", "l": "535", "p": 0}, {"n": "1010 Deluxe", "l": "2", "p": 0}, {"n": "1v1 Lol", "l": "3", "p": 1}, {"n": "1v1 Soccer", "l": "4", "p": 1}, {"n": "2020 G4me", "l": "5", "p": 0}, {"n": "2048", "l": "6", "p": 0}, {"n": "2048 Fusion", "l": "7", "p": 0}, {"n": "2048 Hacked", "l": "8", "p": 0}, {"n": "2048 Multitask", "l": "9", "p": 0}, {"n": "2d Car Race", "l": "10", "p": 0}, {"n": "3 Pandas In Japan", "l": "11", "p": 0}, {"n": "3d Block Gladiator Sword Draw", "l": "536", "p": 0}, {"n": "3d Bowling", "l": "12", "p": 0}, {"n": "3d Free Kick", "l": "13", "p": 0}, {"n": "8 Ball Pool", "l": "14", "p": 0}, {"n": "8 Ball Pro", "l": "15", "p": 0}, {"n": "99 Balls", "l": "16", "p": 0}, {"n": "Achievement Unlocked", "l": "18", "p": 0}, {"n": "Adam And Eve 5 Part 1", "l": "19", "p": 0}, {"n": "Adam And Eve 5 Part 2", "l": "20", "p": 0}, {"n": "Adam And Eve 6", "l": "21", "p": 0}, {"n": "Adam And Eve 7", "l": "22", "p": 0}, {"n": "Adeventures With Anxiety", "l": "23", "p": 0}, {"n": "Adventure Drivers", "l": "24", "p": 0}, {"n": "Adventure With Anxiety", "l": "25", "p": 0}, {"n": "Agent Hunt", "l": "537", "p": 0}, {"n": "Agents Io", "l": "538", "p": 0}, {"n": "Ages Of Conflict", "l": "26", "p": 0}, {"n": "Air Defence 3d", "l": "539", "p": 0}, {"n": "Air Strike War Plane Simulator", "l": "540", "p": 0}, {"n": "Air Wolves", "l": "541", "p": 0}, {"n": "Alchemy Puzzle", "l": "542", "p": 0}, {"n": "Alien Connect", "l": "27", "p": 0}, {"n": "Alien Hominid", "l": "28", "p": 0}, {"n": "Alien Reform", "l": "543", "p": 0}, {"n": "Amazing Rope Police", "l": "29", "p": 1}, {"n": "Among Us", "l": "30", "p": 1}, {"n": "Angry Boss", "l": "544", "p": 0}, {"n": "Angry Heroes", "l": "545", "p": 0}, {"n": "Angry Sharks", "l": "31", "p": 0}, {"n": "Animal Jump", "l": "546", "p": 0}, {"n": "Animal Royal", "l": "547", "p": 0}, {"n": "Apple Shooter", "l": "32", "p": 1}, {"n": "Aquapark Fun Loop", "l": "548", "p": 0}, {"n": "Aquapark Slides", "l": "33", "p": 1}, {"n": "Arcane Archer", "l": "35", "p": 0}, {"n": "Archer Hero", "l": "549", "p": 0}, {"n": "Archery World Tour", "l": "36", "p": 0}, {"n": "Armade Wizard", "l": "34", "p": 0}, {"n": "Army Sniper", "l": "550", "p": 0}, {"n": "Arrow Challenge", "l": "551", "p": 0}, {"n": "Asmr Slicing", "l": "552", "p": 0}, {"n": "Atv Quad Bike Traffic Racer", "l": "553", "p": 0}, {"n": "Awesome Tanks 2", "l": "37", "p": 1}, {"n": "Axis Football League", "l": "38", "p": 1}, {"n": "Baby Survival Challenge", "l": "554", "p": 0}, {"n": "Backflip Adventure", "l": "555", "p": 0}, {"n": "Backrooms 3d", "l": "39", "p": 0}, {"n": "Bacon May Die", "l": "40", "p": 0}, {"n": "Bad Ice Cream 2", "l": "41", "p": 0}, {"n": "Bad Ice Cream 3", "l": "42", "p": 0}, {"n": "Baldis Basics", "l": "43", "p": 0}, {"n": "Baldis Basics Field Trip", "l": "44", "p": 0}, {"n": "Ball 1", "l": "45", "p": 0}, {"n": "Ball Drop Blitz", "l": "556", "p": 0}, {"n": "Ball Eating Simulator", "l": "557", "p": 0}, {"n": "Ball Sort Halloween", "l": "46", "p": 0}, {"n": "Ball Sort Puzzle", "l": "47", "p": 0}, {"n": "Ball Sort Soccer", "l": "48", "p": 0}, {"n": "Ballistic", "l": "49", "p": 0}, {"n": "Basket And Ball", "l": "50", "p": 0}, {"n": "Basket Bros Io", "l": "51", "p": 1}, {"n": "Basket Champs", "l": "52", "p": 0}, {"n": "Basket Random", "l": "53", "p": 1}, {"n": "Basket Stars", "l": "54", "p": 1}, {"n": "Basketball Legends", "l": "55", "p": 1}, {"n": "Basketball Serial Shooter", "l": "558", "p": 0}, {"n": "Basketball Stars", "l": "56", "p": 1}, {"n": "Basketball Stars 2026", "l": "559", "p": 0}, {"n": "Battle For Gondor", "l": "57", "p": 0}, {"n": "Battle Of Tanks", "l": "58", "p": 0}, {"n": "Beam Drive Car Crash Test Simulator", "l": "560", "p": 0}, {"n": "Bear On A Scooter", "l": "59", "p": 0}, {"n": "Bed Wars", "l": "561", "p": 0}, {"n": "Big Red Button", "l": "60", "p": 1}, {"n": "Big Shot Boxing", "l": "61", "p": 1}, {"n": "Biker Street", "l": "62", "p": 0}, {"n": "Billythebox", "l": "562", "p": 0}, {"n": "Birds Catcher", "l": "563", "p": 0}, {"n": "Bitcoin Clicker", "l": "63", "p": 1}, {"n": "Bitlife", "l": "64", "p": 1}, {"n": "Black Hole Square", "l": "65", "p": 0}, {"n": "Black Hole Vs Monster", "l": "564", "p": 0}, {"n": "Blob Bridge Run", "l": "565", "p": 0}, {"n": "Block Eating Simulator", "l": "566", "p": 0}, {"n": "Block The Pig", "l": "66", "p": 0}, {"n": "Blocky Snakes", "l": "67", "p": 0}, {"n": "Blocky Snakes", "l": "456", "p": 0}, {"n": "Bloxors", "l": "68", "p": 1}, {"n": "Blumgi Rocket", "l": "69", "p": 0}, {"n": "Blumgi Slime", "l": "70", "p": 0}, {"n": "Bob The Robber 2", "l": "71", "p": 0}, {"n": "Bomb It 7", "l": "72", "p": 0}, {"n": "Bone Breaker Tycoon", "l": "567", "p": 0}, {"n": "Boss Market", "l": "568", "p": 0}, {"n": "Bottle Flip", "l": "73", "p": 0}, {"n": "Bounce Ball", "l": "74", "p": 0}, {"n": "Bouncing Hell", "l": "75", "p": 0}, {"n": "Bouncy Race 3d", "l": "574", "p": 0}, {"n": "Bouncy Woods", "l": "76", "p": 0}, {"n": "Bouncy Woods", "l": "457", "p": 0}, {"n": "Bound Land", "l": "77", "p": 0}, {"n": "Bow And Arrow", "l": "569", "p": 0}, {"n": "Boxel Rebound", "l": "78", "p": 1}, {"n": "Boxing Physics 2", "l": "79", "p": 1}, {"n": "Boxing Random", "l": "80", "p": 0}, {"n": "Boxing Stars", "l": "81", "p": 1}, {"n": "Br Br Patapim Obby Challenge", "l": "571", "p": 0}, {"n": "Brain Puzzles Quests", "l": "570", "p": 0}, {"n": "Breaking The Bank", "l": "82", "p": 0}, {"n": "Bubble Pop Adventures", "l": "83", "p": 0}, {"n": "Bull Runner", "l": "572", "p": 0}, {"n": "Burger Race", "l": "573", "p": 0}, {"n": "Burrito Bison Launch A Libre", "l": "84", "p": 0}, {"n": "Burrito Bison Revenge", "l": "85", "p": 0}, {"n": "Cannon Basketball 4", "l": "86", "p": 0}, {"n": "Car Rush", "l": "87", "p": 0}, {"n": "Car Rush", "l": "458", "p": 0}, {"n": "Cars Simulator", "l": "88", "p": 0}, {"n": "Cartoon Moto Stunt", "l": "575", "p": 0}, {"n": "Carvivor Ops", "l": "576", "p": 0}, {"n": "Castle Keeper", "l": "626", "p": 0}, {"n": "Cat Gunner Super Zombie Shoot", "l": "459", "p": 0}, {"n": "Cats", "l": "460", "p": 0}, {"n": "Cave War", "l": "89", "p": 0}, {"n": "Champion Archer", "l": "90", "p": 0}, {"n": "Champion Island", "l": "91", "p": 0}, {"n": "Checkers Legend", "l": "92", "p": 0}, {"n": "Chrome Dino", "l": "93", "p": 0}, {"n": "City Builder", "l": "627", "p": 0}, {"n": "City Coach Bus Sim", "l": "461", "p": 0}, {"n": "City Parking", "l": "94", "p": 1}, {"n": "Clean House", "l": "628", "p": 0}, {"n": "Clean Road 3d", "l": "629", "p": 0}, {"n": "Clicker Heroes", "l": "97", "p": 0}, {"n": "Climb Over It", "l": "98", "p": 0}, {"n": "Cluster Rush", "l": "99", "p": 0}, {"n": "Coin Run", "l": "630", "p": 0}, {"n": "Color Line 3d", "l": "631", "p": 0}, {"n": "Color Pop 3d", "l": "632", "p": 0}, {"n": "Color Race 3d", "l": "633", "p": 0}, {"n": "Combines", "l": "100", "p": 1}, {"n": "Concept Car Stunt", "l": "634", "p": 0}, {"n": "Concuer io", "l": "17", "p": 0}, {"n": "Confront", "l": "635", "p": 0}, {"n": "Conquer Io", "l": "577", "p": 0}, {"n": "Cookie Clicker", "l": "101", "p": 1}, {"n": "Cop Simulator", "l": "636", "p": 0}, {"n": "Core Ball", "l": "102", "p": 0}, {"n": "Corn Hole 3d", "l": "637", "p": 0}, {"n": "Counter Craft Sniper", "l": "638", "p": 0}, {"n": "Craft Mine", "l": "103", "p": 0}, {"n": "Craftmine", "l": "104", "p": 0}, {"n": "Crazy Cars", "l": "105", "p": 0}, {"n": "Crazy Cars", "l": "462", "p": 0}, {"n": "Crazy Hill Climbing", "l": "578", "p": 0}, {"n": "Crazy Parking", "l": "106", "p": 0}, {"n": "Crazy Stunts 3d", "l": "579", "p": 0}, {"n": "Crazy Tunel 3d", "l": "463", "p": 0}, {"n": "Crossy Road", "l": "107", "p": 1}, {"n": "Crowd Lumberjack", "l": "639", "p": 0}, {"n": "Crowd Pusher", "l": "640", "p": 0}, {"n": "Crypto Maze 3D", "l": "108", "p": 0}, {"n": "Cube Stack 2048", "l": "641", "p": 0}, {"n": "Cube Stories Escape", "l": "642", "p": 0}, {"n": "Cube Tower Surfer", "l": "643", "p": 0}, {"n": "Curvy Punch 3d", "l": "644", "p": 0}, {"n": "Cut 3d", "l": "645", "p": 0}, {"n": "Cut The Rope", "l": "109", "p": 0}, {"n": "Cut The Rope Holiday", "l": "110", "p": 0}, {"n": "Cut The Rope Time Travel", "l": "111", "p": 0}, {"n": "Dad Escape", "l": "646", "p": 0}, {"n": "Dante", "l": "112", "p": 0}, {"n": "Dead Again", "l": "113", "p": 0}, {"n": "Deal Or No Deal", "l": "114", "p": 0}, {"n": "Death Run 3d", "l": "115", "p": 0}, {"n": "Death Soul", "l": "116", "p": 0}, {"n": "Deathcario", "l": "117", "p": 0}, {"n": "Deepest Sword", "l": "118", "p": 1}, {"n": "Defend The Tank", "l": "119", "p": 0}, {"n": "Dig This", "l": "647", "p": 0}, {"n": "Digger Fighter In The Maze", "l": "648", "p": 0}, {"n": "Doctor Acorn 2", "l": "120", "p": 0}, {"n": "Dodgeball", "l": "649", "p": 0}, {"n": "Doge 2048", "l": "121", "p": 0}, {"n": "Doge Miner", "l": "122", "p": 0}, {"n": "Doodle Jump", "l": "123", "p": 0}, {"n": "Down The Hill", "l": "124", "p": 0}, {"n": "Dr Psycho Hospital Escape", "l": "650", "p": 0}, {"n": "Dragon Vs Bricks", "l": "125", "p": 0}, {"n": "Draw And Save Stickman", "l": "651", "p": 0}, {"n": "Draw And Save The Car", "l": "652", "p": 0}, {"n": "Draw Knife", "l": "653", "p": 0}, {"n": "Draw The Bridge", "l": "126", "p": 0}, {"n": "Draw The Hill", "l": "127", "p": 0}, {"n": "Draw To Fly", "l": "654", "p": 0}, {"n": "Drift 3", "l": "655", "p": 0}, {"n": "Drift Boss", "l": "128", "p": 0}, {"n": "Drift F1", "l": "656", "p": 0}, {"n": "Drive Mad", "l": "129", "p": 1}, {"n": "Duck Life", "l": "130", "p": 1}, {"n": "Duck Life 2", "l": "131", "p": 1}, {"n": "Duck Life 3", "l": "132", "p": 1}, {"n": "Duke Dashington Remastered", "l": "133", "p": 0}, {"n": "Edge Lets Surf", "l": "134", "p": 0}, {"n": "Eggy Car", "l": "135", "p": 0}, {"n": "Elastic Face", "l": "136", "p": 0}, {"n": "Electro Io", "l": "137", "p": 0}, {"n": "Endless War 3", "l": "138", "p": 0}, {"n": "Erase Box", "l": "139", "p": 0}, {"n": "Escape The Horror Craft", "l": "657", "p": 0}, {"n": "Evil Glitch", "l": "140", "p": 0}, {"n": "Evil Nun Schools Out", "l": "658", "p": 0}, {"n": "Falling Fred", "l": "141", "p": 0}, {"n": "Fancy Pants Adventures", "l": "142", "p": 0}, {"n": "Fancy Pants Adventures 2", "l": "143", "p": 0}, {"n": "Fancy Pants Adventures 3", "l": "144", "p": 0}, {"n": "Farm Match Seasons", "l": "145", "p": 0}, {"n": "Filled Glass", "l": "146", "p": 0}, {"n": "Fire Boy Water Girl Forest Temple", "l": "147", "p": 0}, {"n": "Fireboy And Watergirl 2", "l": "148", "p": 0}, {"n": "Fireboy And Watergirl 3", "l": "149", "p": 0}, {"n": "Fireboy And Watergirl 4", "l": "150", "p": 0}, {"n": "Fishing Frenzy", "l": "151", "p": 0}, {"n": "Five Nights At Freddys", "l": "152", "p": 1}, {"n": "Five Nights At Winstons", "l": "153", "p": 0}, {"n": "Flappy Bird", "l": "154", "p": 0}, {"n": "Flippy Bottle", "l": "155", "p": 0}, {"n": "Fnaf 2", "l": "464", "p": 0}, {"n": "Fnaf 4", "l": "465", "p": 0}, {"n": "Fnaf Shooter", "l": "466", "p": 0}, {"n": "Football Brawl", "l": "156", "p": 0}, {"n": "Football Legends", "l": "157", "p": 0}, {"n": "Football Strike", "l": "158", "p": 1}, {"n": "Fred Running", "l": "159", "p": 0}, {"n": "Friday Night Funkin", "l": "160", "p": 0}, {"n": "Froggys Battle", "l": "161", "p": 0}, {"n": "Fruit Ninja", "l": "162", "p": 0}, {"n": "Funny Shooter 2", "l": "163", "p": 1}, {"n": "G4me Inside 4 G4me Inside 4 G4me", "l": "164", "p": 0}, {"n": "Geo Dash 2", "l": "165", "p": 1}, {"n": "Geometry Dash", "l": "166", "p": 1}, {"n": "Geometry Dash lessonic", "l": "167", "p": 0}, {"n": "Geometry Dash Scratch", "l": "168", "p": 0}, {"n": "Geometry Neon Dash Rainbow", "l": "169", "p": 0}, {"n": "Geometry Rash", "l": "170", "p": 0}, {"n": "Geometry Tower", "l": "171", "p": 0}, {"n": "George And The Printer", "l": "172", "p": 0}, {"n": "Getaway Shootout", "l": "467", "p": 0}, {"n": "Getting Over It", "l": "173", "p": 1}, {"n": "Getting Over It", "l": "468", "p": 0}, {"n": "Gimme The Airpod", "l": "174", "p": 0}, {"n": "Go Ball", "l": "175", "p": 0}, {"n": "Gobdun", "l": "176", "p": 0}, {"n": "Gold Digger Frvr", "l": "177", "p": 0}, {"n": "Grand Vegas Simulator", "l": "178", "p": 1}, {"n": "Grand Vegas Simulator", "l": "469", "p": 0}, {"n": "Gravity Soccer", "l": "179", "p": 0}, {"n": "Guess The Kitty", "l": "180", "p": 0}, {"n": "Gun Mayhem 2", "l": "181", "p": 0}, {"n": "Gun Spin", "l": "182", "p": 1}, {"n": "Gunblood", "l": "183", "p": 0}, {"n": "Gura Tamberine", "l": "184", "p": 0}, {"n": "Hammer 2 Reloaded", "l": "185", "p": 0}, {"n": "Hammer 2 Reloaded", "l": "470", "p": 0}, {"n": "Hanger", "l": "186", "p": 0}, {"n": "Happy Fishing", "l": "187", "p": 0}, {"n": "Happy Hop", "l": "188", "p": 0}, {"n": "Happy Wheels", "l": "189", "p": 1}, {"n": "Head Soccer 2023", "l": "190", "p": 0}, {"n": "Heads Arena", "l": "191", "p": 0}, {"n": "Helix Crush", "l": "580", "p": 0}, {"n": "Hero Ragdoll Fighting", "l": "581", "p": 0}, {"n": "Hextris", "l": "192", "p": 0}, {"n": "Hide And Smash", "l": "193", "p": 0}, {"n": "Highway Racer 3d", "l": "582", "p": 0}, {"n": "Hill Climb Pixel Car", "l": "583", "p": 0}, {"n": "Hoggy 2", "l": "194", "p": 0}, {"n": "Hold Position", "l": "195", "p": 0}, {"n": "Hole Io", "l": "196", "p": 1}, {"n": "Hole Io", "l": "471", "p": 0}, {"n": "Hop Pop It", "l": "197", "p": 0}, {"n": "House Of Hazards", "l": "198", "p": 0}, {"n": "Hungry Lamu", "l": "199", "p": 1}, {"n": "Icy Purple Head 2", "l": "200", "p": 0}, {"n": "Icy Purple Head 3", "l": "201", "p": 0}, {"n": "Idle Breakout", "l": "202", "p": 0}, {"n": "Idle Mining Empire", "l": "203", "p": 1}, {"n": "Idle Restaurants", "l": "204", "p": 0}, {"n": "Idle Tree City", "l": "205", "p": 1}, {"n": "Impossible Monster Truck", "l": "206", "p": 0}, {"n": "Indian Truck", "l": "207", "p": 1}, {"n": "Infiltrating The Airship", "l": "208", "p": 1}, {"n": "Inifnite Soccer", "l": "209", "p": 0}, {"n": "Iron Snout", "l": "210", "p": 0}, {"n": "Jelly Bomb", "l": "584", "p": 0}, {"n": "Jelly Truck", "l": "211", "p": 0}, {"n": "Jetpack Joyride", "l": "212", "p": 0}, {"n": "Jewels Blitz 5", "l": "213", "p": 0}, {"n": "Johnny Upgrade", "l": "214", "p": 0}, {"n": "Jump Io", "l": "585", "p": 0}, {"n": "Jump Jelly Jump", "l": "215", "p": 0}, {"n": "Kart Fight", "l": "472", "p": 0}, {"n": "Kart Fight Io", "l": "216", "p": 0}, {"n": "Kart Race 3d", "l": "473", "p": 0}, {"n": "Kawaii Dressup", "l": "474", "p": 0}, {"n": "Kiss O Neck", "l": "586", "p": 0}, {"n": "Kitchen Gun", "l": "217", "p": 0}, {"n": "Kitten Cannon", "l": "218", "p": 0}, {"n": "Klocki", "l": "219", "p": 0}, {"n": "Lands Of Blight", "l": "475", "p": 0}, {"n": "Lessonic Bowling", "l": "95", "p": 0}, {"n": "Lessonicube", "l": "96", "p": 0}, {"n": "Lethal Sniper 3d Army Soldier", "l": "476", "p": 0}, {"n": "Level Devil", "l": "477", "p": 0}, {"n": "Little Alchemy 2", "l": "220", "p": 0}, {"n": "Little Master Cricket", "l": "478", "p": 0}, {"n": "Lovely Fox", "l": "479", "p": 0}, {"n": "Mad Day", "l": "480", "p": 0}, {"n": "Mad Shark", "l": "221", "p": 0}, {"n": "Mad Truck Challenge", "l": "222", "p": 0}, {"n": "Madalin Cars Multiplayer", "l": "481", "p": 0}, {"n": "Madalin Stunt Cars 2", "l": "223", "p": 0}, {"n": "Madalin Stunt Cars 2", "l": "482", "p": 0}, {"n": "Madalin Stunt Cars 3", "l": "224", "p": 0}, {"n": "Madalin Stunt Cars 3", "l": "483", "p": 0}, {"n": "Madzoong", "l": "484", "p": 0}, {"n": "Mafia Billiard Tricks", "l": "225", "p": 0}, {"n": "Mafia Wars", "l": "485", "p": 0}, {"n": "Marble Dash", "l": "486", "p": 0}, {"n": "Masked Forces", "l": "226", "p": 0}, {"n": "Master Checkers", "l": "487", "p": 0}, {"n": "Math Choppity", "l": "227", "p": 0}, {"n": "Math Slither", "l": "228", "p": 1}, {"n": "Maze Path Of Light", "l": "488", "p": 0}, {"n": "Melodys Adventure", "l": "229", "p": 0}, {"n": "Merge Party", "l": "489", "p": 0}, {"n": "Merge Round Racers", "l": "230", "p": 0}, {"n": "Mine Blocks", "l": "231", "p": 0}, {"n": "Minecraft 15", "l": "232", "p": 1}, {"n": "Minecraft lessonic Hacks", "l": "233", "p": 1}, {"n": "Mini Monkey Mart", "l": "587", "p": 0}, {"n": "Mini Shooter", "l": "234", "p": 0}, {"n": "Missiles", "l": "235", "p": 0}, {"n": "Mob City", "l": "490", "p": 0}, {"n": "Money Movers", "l": "236", "p": 0}, {"n": "Money Movers 2", "l": "237", "p": 0}, {"n": "Money Movers 3", "l": "238", "p": 0}, {"n": "Money Roller", "l": "239", "p": 1}, {"n": "Monkey Mart", "l": "240", "p": 1}, {"n": "Monster Truck Destroyer", "l": "241", "p": 0}, {"n": "Monsters Wheels Special", "l": "491", "p": 0}, {"n": "Mosaic Puzzle Art", "l": "492", "p": 0}, {"n": "Moto Maniac", "l": "493", "p": 0}, {"n": "Moto Maniac 2", "l": "494", "p": 0}, {"n": "Moto Maniac 3", "l": "242", "p": 0}, {"n": "Moto Maniac 3", "l": "495", "p": 0}, {"n": "Moto X 3m", "l": "243", "p": 1}, {"n": "Moto X 3m 2", "l": "244", "p": 1}, {"n": "Moto X 3m 3", "l": "245", "p": 1}, {"n": "Moto X 3m Winter", "l": "246", "p": 1}, {"n": "Moto X3m Pool Party", "l": "247", "p": 1}, {"n": "Moto X3m Spooky", "l": "248", "p": 1}, {"n": "Motor Hero Online", "l": "249", "p": 0}, {"n": "Moving Truck Bounty", "l": "496", "p": 0}, {"n": "Mr Bullet", "l": "250", "p": 0}, {"n": "Mr. Hunter", "l": "251", "p": 0}, {"n": "Muscle Up Master", "l": "588", "p": 0}, {"n": "Mutazone", "l": "252", "p": 0}, {"n": "My Perfect Mine", "l": "589", "p": 0}, {"n": "Mystic Object Hunt", "l": "590", "p": 0}, {"n": "Ngon", "l": "253", "p": 0}, {"n": "Ninja Cat", "l": "254", "p": 0}, {"n": "Ninja Dash Cozy Tactic Puzzle", "l": "591", "p": 0}, {"n": "Ninja Vs Evil Corp", "l": "255", "p": 0}, {"n": "Nsshaft", "l": "256", "p": 0}, {"n": "Number Snake", "l": "257", "p": 0}, {"n": "Nuts Bolts Puzzle", "l": "592", "p": 0}, {"n": "Obstacle Car Driving", "l": "593", "p": 0}, {"n": "Offroad Ultimate", "l": "497", "p": 0}, {"n": "Om Nom Bounce", "l": "258", "p": 0}, {"n": "Only Up 3d Parkour", "l": "259", "p": 1}, {"n": "Only Up 3d Parkour", "l": "498", "p": 0}, {"n": "Ovo", "l": "260", "p": 0}, {"n": "Ovo 144", "l": "261", "p": 0}, {"n": "Ovo 3", "l": "499", "p": 0}, {"n": "Ovo 3 Dimensions", "l": "262", "p": 0}, {"n": "Ovo2", "l": "263", "p": 0}, {"n": "Pack A Bag", "l": "500", "p": 0}, {"n": "Pacman", "l": "264", "p": 0}, {"n": "Paint Strike", "l": "501", "p": 0}, {"n": "Papa Cherry Saga", "l": "265", "p": 0}, {"n": "Papas Burgeria", "l": "266", "p": 0}, {"n": "Papas Pizzaria", "l": "267", "p": 0}, {"n": "Papas Taco Mia", "l": "268", "p": 1}, {"n": "Paper Fighter 3d", "l": "502", "p": 0}, {"n": "Paper Minecraft", "l": "269", "p": 1}, {"n": "Paperio 2", "l": "270", "p": 0}, {"n": "Paperio 3", "l": "271", "p": 0}, {"n": "Papery Planes", "l": "272", "p": 0}, {"n": "Park Out", "l": "273", "p": 0}, {"n": "Parking Fury 1", "l": "274", "p": 0}, {"n": "Parking Fury 2", "l": "275", "p": 0}, {"n": "Parking Fury 3", "l": "276", "p": 0}, {"n": "Parkour Race", "l": "277", "p": 0}, {"n": "Parkour Race", "l": "503", "p": 0}, {"n": "Penalty Kick Online", "l": "278", "p": 0}, {"n": "Penalty Kicks", "l": "279", "p": 0}, {"n": "Penalty Shooters 2", "l": "280", "p": 0}, {"n": "Penalty Shooters 3", "l": "281", "p": 0}, {"n": "Peppa Pig Basketball", "l": "504", "p": 0}, {"n": "Pillowbattle Io", "l": "594", "p": 0}, {"n": "Ping Pong", "l": "282", "p": 0}, {"n": "Pixel Smash Duel", "l": "283", "p": 0}, {"n": "Pizza Tower", "l": "284", "p": 0}, {"n": "Plants Vs Zombies", "l": "285", "p": 0}, {"n": "Pokemon Emerald", "l": "286", "p": 1}, {"n": "Pokemon Emerald 2", "l": "287", "p": 0}, {"n": "Pokemon Firered", "l": "288", "p": 1}, {"n": "Pokey Stick", "l": "595", "p": 0}, {"n": "Pool Buddy 3", "l": "289", "p": 0}, {"n": "Pool Master", "l": "596", "p": 0}, {"n": "Popcorn Pop", "l": "290", "p": 0}, {"n": "Pou", "l": "291", "p": 0}, {"n": "President Simulator", "l": "292", "p": 1}, {"n": "Protektor", "l": "293", "p": 0}, {"n": "Pudding Monsters", "l": "294", "p": 0}, {"n": "Push The Box", "l": "295", "p": 0}, {"n": "Push The Box 3d", "l": "505", "p": 0}, {"n": "Push Your Luck", "l": "296", "p": 1}, {"n": "Quake", "l": "297", "p": 1}, {"n": "Rabbit Samurai", "l": "298", "p": 0}, {"n": "Rabbit Samurai 2", "l": "299", "p": 0}, {"n": "Rabbit Samurai 3", "l": "300", "p": 0}, {"n": "Racing Monster Trucks", "l": "301", "p": 0}, {"n": "Raft Wars", "l": "302", "p": 0}, {"n": "Raft Wars", "l": "506", "p": 0}, {"n": "Raft Wars 2", "l": "303", "p": 0}, {"n": "Raft Wars 2", "l": "507", "p": 0}, {"n": "Real Garbage Truck", "l": "304", "p": 0}, {"n": "Recoil", "l": "305", "p": 0}, {"n": "Red Ball Forever", "l": "306", "p": 0}, {"n": "Retro Bowl", "l": "307", "p": 1}, {"n": "Retro Bowl College", "l": "308", "p": 1}, {"n": "Riddle School 1", "l": "309", "p": 0}, {"n": "Riddle School 4", "l": "310", "p": 0}, {"n": "Riddle School 5", "l": "311", "p": 0}, {"n": "Riddle School Transfer 1", "l": "312", "p": 1}, {"n": "Riddle Transfer 2", "l": "313", "p": 0}, {"n": "Rise Higher", "l": "314", "p": 0}, {"n": "Rise Of Neon Square", "l": "315", "p": 0}, {"n": "Road Of Fury 4", "l": "597", "p": 0}, {"n": "Rocket League", "l": "316", "p": 1}, {"n": "Rocking Sky Trip", "l": "317", "p": 0}, {"n": "Rolling Ball 3d", "l": "318", "p": 0}, {"n": "Rolling Forests", "l": "319", "p": 0}, {"n": "Rolly Vortex", "l": "320", "p": 1}, {"n": "Rooftop Snipers", "l": "321", "p": 0}, {"n": "Rooftop Snipers", "l": "508", "p": 0}, {"n": "Rooftop Snipers 2", "l": "322", "p": 1}, {"n": "Rooftop Snipers 2", "l": "509", "p": 0}, {"n": "Roots", "l": "323", "p": 0}, {"n": "Roper", "l": "324", "p": 0}, {"n": "Run 3 Space", "l": "325", "p": 0}, {"n": "Run Into Death", "l": "326", "p": 0}, {"n": "Rush Race", "l": "327", "p": 0}, {"n": "Sandboxels", "l": "328", "p": 0}, {"n": "Santy Is Home", "l": "329", "p": 0}, {"n": "Sausage Flip", "l": "330", "p": 0}, {"n": "Save The Doge", "l": "331", "p": 0}, {"n": "Scrambled Eggs", "l": "332", "p": 0}, {"n": "Scrap Metal 3", "l": "333", "p": 1}, {"n": "Shape Shifting", "l": "598", "p": 0}, {"n": "Shape Transforming Shifting Run", "l": "599", "p": 0}, {"n": "Shards", "l": "334", "p": 0}, {"n": "Sheepop", "l": "335", "p": 0}, {"n": "Shoot Stickman", "l": "510", "p": 0}, {"n": "Shootz", "l": "511", "p": 0}, {"n": "Short Ride", "l": "336", "p": 1}, {"n": "Shuttledeck", "l": "337", "p": 0}, {"n": "Sink It", "l": "512", "p": 0}, {"n": "Skibidi Shooter", "l": "513", "p": 0}, {"n": "Skibidi Toilet Attack", "l": "338", "p": 0}, {"n": "Skibidi Toilet Attack", "l": "514", "p": 0}, {"n": "Skibidi Toilet Rampage", "l": "339", "p": 0}, {"n": "Skibidi Toilet Rampage", "l": "515", "p": 0}, {"n": "Skiing Fred", "l": "340", "p": 0}, {"n": "Skyblock", "l": "341", "p": 1}, {"n": "Slime Rush Td", "l": "342", "p": 0}, {"n": "Sling Kong", "l": "516", "p": 0}, {"n": "Sling Tomb", "l": "343", "p": 0}, {"n": "Slope", "l": "344", "p": 1}, {"n": "Slope 2", "l": "345", "p": 0}, {"n": "Slope Ball", "l": "346", "p": 0}, {"n": "Smash Carts", "l": "347", "p": 0}, {"n": "Snail Bob 7", "l": "348", "p": 0}, {"n": "Snail Bob 8", "l": "349", "p": 0}, {"n": "Snake Io", "l": "350", "p": 1}, {"n": "Sniper Shot", "l": "351", "p": 1}, {"n": "Sniper Shot Bullet Time", "l": "517", "p": 0}, {"n": "Snow Rider3d", "l": "352", "p": 1}, {"n": "Snowbattle", "l": "353", "p": 0}, {"n": "Snowboard King 2024", "l": "600", "p": 0}, {"n": "Soccer Random", "l": "354", "p": 0}, {"n": "Soccer Skills Euro Cup", "l": "355", "p": 1}, {"n": "Soldier Legend", "l": "356", "p": 0}, {"n": "Sort The Court", "l": "357", "p": 0}, {"n": "Space Flash", "l": "358", "p": 0}, {"n": "Space Is Key", "l": "359", "p": 0}, {"n": "Spacebar Clicker", "l": "534", "p": 0}, {"n": "Spiderman Zombie", "l": "360", "p": 0}, {"n": "Spin Soccer", "l": "361", "p": 0}, {"n": "Spiral Paint", "l": "362", "p": 0}, {"n": "Spot The Difference", "l": "363", "p": 0}, {"n": "Stack Bump 3d", "l": "364", "p": 0}, {"n": "Stealing The Diamond", "l": "365", "p": 0}, {"n": "Stick Archers Battle", "l": "366", "p": 0}, {"n": "Stick Defenders", "l": "367", "p": 0}, {"n": "Stick Duel Battle", "l": "368", "p": 0}, {"n": "Stick Jet Challenge", "l": "369", "p": 0}, {"n": "Stick Merge", "l": "370", "p": 0}, {"n": "Stickhole Io", "l": "601", "p": 0}, {"n": "Stickman Boost", "l": "371", "p": 1}, {"n": "Stickman Boost", "l": "518", "p": 0}, {"n": "Stickman Boost 2", "l": "519", "p": 0}, {"n": "Stickman Golf", "l": "372", "p": 0}, {"n": "Stickman Hook", "l": "373", "p": 1}, {"n": "Stickman Snowfight", "l": "374", "p": 0}, {"n": "Stickman Weapon Master", "l": "602", "p": 0}, {"n": "Stickmen Crowd Fight", "l": "659", "p": 0}, {"n": "Stickslasher", "l": "375", "p": 0}, {"n": "Student And Teacher", "l": "603", "p": 0}, {"n": "Stupid Zombies 2", "l": "520", "p": 0}, {"n": "Subway Surfers", "l": "376", "p": 1}, {"n": "Subway Surfers Bali", "l": "377", "p": 1}, {"n": "Subway Surfers New York", "l": "378", "p": 0}, {"n": "Suika", "l": "379", "p": 0}, {"n": "Super Fowlst", "l": "521", "p": 0}, {"n": "Super G4me Maker", "l": "380", "p": 0}, {"n": "Super Hexbee Merger", "l": "381", "p": 0}, {"n": "Super Liquid Soccer", "l": "382", "p": 1}, {"n": "Super Mario 64", "l": "383", "p": 0}, {"n": "Super Rock Climber", "l": "604", "p": 0}, {"n": "Superbike Hero", "l": "522", "p": 0}, {"n": "Superhot", "l": "384", "p": 1}, {"n": "Supernova", "l": "523", "p": 0}, {"n": "Sushi Puzzle", "l": "605", "p": 0}, {"n": "Swatforce Vs Terrorists", "l": "524", "p": 0}, {"n": "Sweet World", "l": "385", "p": 0}, {"n": "Swingo", "l": "386", "p": 0}, {"n": "Swipe Ball", "l": "606", "p": 0}, {"n": "Swipe Runner", "l": "607", "p": 0}, {"n": "Tactical Weapon Pack 2", "l": "387", "p": 1}, {"n": "Tank Defender", "l": "388", "p": 0}, {"n": "Tanuki Sunset", "l": "389", "p": 0}, {"n": "Tap Tap Shot 2", "l": "390", "p": 0}, {"n": "Tap Tap Shots", "l": "391", "p": 1}, {"n": "Temple Run 2", "l": "392", "p": 0}, {"n": "Terraira", "l": "393", "p": 0}, {"n": "Territorial", "l": "394", "p": 0}, {"n": "Tetris", "l": "395", "p": 0}, {"n": "The Backrooms", "l": "396", "p": 0}, {"n": "The Bowling Club", "l": "397", "p": 0}, {"n": "The Impossible Quiz", "l": "398", "p": 1}, {"n": "The Impossible Quiz 2", "l": "399", "p": 0}, {"n": "The Little Giant", "l": "400", "p": 0}, {"n": "The Road Home Granny Escape", "l": "608", "p": 0}, {"n": "There Is No G4me", "l": "401", "p": 0}, {"n": "Tictactoe", "l": "402", "p": 0}, {"n": "Time Shooter 2", "l": "403", "p": 1}, {"n": "Time Shooter 2", "l": "525", "p": 0}, {"n": "Time Shooter 3", "l": "404", "p": 1}, {"n": "Time Shooter 3", "l": "526", "p": 0}, {"n": "Time Shooter 3 Swat", "l": "405", "p": 1}, {"n": "Time Shooter 3 Swat", "l": "527", "p": 0}, {"n": "Tiny Fishing", "l": "406", "p": 1}, {"n": "Tiny Fragments", "l": "407", "p": 0}, {"n": "Tomb Runner", "l": "408", "p": 0}, {"n": "Total Recoil", "l": "528", "p": 0}, {"n": "Tough Growth", "l": "409", "p": 0}, {"n": "Tower Construct", "l": "410", "p": 0}, {"n": "Tower Crash 3d", "l": "411", "p": 0}, {"n": "Townscaper", "l": "412", "p": 1}, {"n": "Traffic Control", "l": "413", "p": 0}, {"n": "Traffic Light Simulator 3d", "l": "609", "p": 0}, {"n": "Trafficmania", "l": "414", "p": 0}, {"n": "Tricky Arrow 2", "l": "610", "p": 0}, {"n": "Tricky Crab", "l": "415", "p": 0}, {"n": "Truck Loader 5", "l": "529", "p": 0}, {"n": "Tube Jumpers", "l": "416", "p": 1}, {"n": "Tunnel Rush", "l": "417", "p": 0}, {"n": "Tunnel Rush 2", "l": "418", "p": 0}, {"n": "Tunnelz", "l": "419", "p": 0}, {"n": "Turn Turn", "l": "420", "p": 0}, {"n": "Ultimate Offroad Simulator", "l": "530", "p": 0}, {"n": "Uncle Hit Punch The Dummy", "l": "611", "p": 0}, {"n": "Unicycle Balance 3d", "l": "612", "p": 0}, {"n": "Uno", "l": "421", "p": 0}, {"n": "Uno 4 Colors Multiplayer", "l": "422", "p": 1}, {"n": "Up Hill Racing", "l": "613", "p": 0}, {"n": "Up Left Out", "l": "423", "p": 1}, {"n": "Urus City Driver", "l": "614", "p": 0}, {"n": "Veloce", "l": "424", "p": 0}, {"n": "Vex 8", "l": "425", "p": 1}, {"n": "Vex3", "l": "426", "p": 0}, {"n": "Vex4", "l": "427", "p": 0}, {"n": "Vex5", "l": "428", "p": 0}, {"n": "Vex6", "l": "429", "p": 0}, {"n": "Vex7", "l": "430", "p": 0}, {"n": "Vikings An Archer S Journey", "l": "615", "p": 0}, {"n": "Village Craft", "l": "531", "p": 0}, {"n": "Volley Random", "l": "431", "p": 0}, {"n": "Wacky Wheels", "l": "616", "p": 0}, {"n": "We Become What We Behold", "l": "432", "p": 1}, {"n": "We Re Impostors Kill Together", "l": "617", "p": 0}, {"n": "Weapons And Ragdolls", "l": "618", "p": 0}, {"n": "Weave Silk", "l": "433", "p": 0}, {"n": "Webgl Fluid Sim", "l": "434", "p": 0}, {"n": "Weighted Seesaw", "l": "435", "p": 0}, {"n": "What A Walk", "l": "619", "p": 0}, {"n": "Wheelie Bike", "l": "436", "p": 0}, {"n": "Wheelie Bike 2", "l": "437", "p": 0}, {"n": "Wheely 2", "l": "438", "p": 0}, {"n": "Wheely 3", "l": "439", "p": 0}, {"n": "Wheely 4", "l": "440", "p": 0}, {"n": "Wheely 5", "l": "441", "p": 0}, {"n": "Wheely 6", "l": "442", "p": 0}, {"n": "Wheely 7", "l": "443", "p": 0}, {"n": "Wheely 8", "l": "444", "p": 0}, {"n": "Wild Tanks", "l": "620", "p": 0}, {"n": "Wood Block Puzzle", "l": "445", "p": 0}, {"n": "Wood Blocks 3d", "l": "532", "p": 0}, {"n": "Woodventure", "l": "446", "p": 0}, {"n": "World War 2 Shooter", "l": "621", "p": 0}, {"n": "Worlds Hardest G4me", "l": "447", "p": 1}, {"n": "Worlds Hardest G4me 2", "l": "448", "p": 0}, {"n": "Wormate Io", "l": "449", "p": 0}, {"n": "Worms", "l": "450", "p": 0}, {"n": "Wormsarena Io", "l": "622", "p": 0}, {"n": "X Trial Racing", "l": "451", "p": 0}, {"n": "Xtreme Bottle Shoot", "l": "660", "p": 0}, {"n": "Yasin Poop Rush", "l": "623", "p": 0}, {"n": "Yohoho", "l": "452", "p": 1}, {"n": "Yohoho 2", "l": "453", "p": 1}, {"n": "Zombcopter", "l": "624", "p": 0}, {"n": "Zombie Driver", "l": "625", "p": 0}, {"n": "Zombie Shooter 2d", "l": "454", "p": 0}, {"n": "Zombie Shooter 2d", "l": "533", "p": 0}, {"n": "Zuck Vs Musk Techbro Beatdown", "l": "455", "p": 0}].map((g, i) => ({
+    id: g.l, name: g.n, popular: !!g.p,
+    game: SITE + '/_lessons/' + g.l,
+    thumb: SITE + '/_lessonr/' + g.l + '.webp'
+  }));
+  const BY_ID = Object.fromEntries(GAMES.map(g => [g.id, g]));
+  const PAGE = 60;
+
+  let saved = load();
+  let filter = 'all';
+  let query = '';
+  let shown = PAGE;
+  let current = null;
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) { const p = JSON.parse(raw); return { games: p.games || {}, recent: p.recent || [] }; }
+    } catch (e) {}
+    return { games: {}, recent: [] };
+  }
+  function persist() {
+    try { localStorage.setItem(KEY, JSON.stringify(saved)); }
+    catch (e) { toast('Could not save progress in this browser'); }
+  }
+  function info(id) {
+    return saved.games[id] || (saved.games[id] = { plays: 0, fav: false, last: 0 });
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  }
+
+  function visible() {
+    const q = query.trim().toLowerCase();
+    let list;
+    if (filter === 'recent') {
+      list = saved.recent.map(id => BY_ID[id]).filter(Boolean);
+    } else {
+      list = GAMES.filter(g => {
+        if (filter === 'popular' && !g.popular) return false;
+        if (filter === 'favorites' && !(saved.games[g.id] && saved.games[g.id].fav)) return false;
+        return true;
+      });
+    }
+    if (q) list = list.filter(g => g.name.toLowerCase().includes(q));
+    return list;
+  }
+
+  function card(g) {
+    const i = saved.games[g.id] || {};
+    return `<button class="card" data-id="${g.id}" aria-label="${esc(g.name)}">
+      <img class="thumb" data-src="${g.thumb}" alt="" loading="lazy">
+      ${g.popular ? '<span class="pop">HOT</span>' : ''}
+      ${i.fav ? '<span class="star">★</span>' : ''}
+      <div class="name">${esc(g.name)}</div>
+      <div class="sub">${i.plays ? 'Played ' + i.plays + '×' : 'Not played yet'}</div>
+    </button>`;
+  }
+
+  function render() {
+    const list = visible();
+    const slice = list.slice(0, shown);
+    document.getElementById('grid').innerHTML = slice.map(card).join('');
+    document.getElementById('count').textContent = list.length + ' game' + (list.length === 1 ? '' : 's');
+    document.getElementById('moreBtn').classList.toggle('hidden', list.length <= shown);
+    document.getElementById('status').textContent = GAMES.length + ' games · ' + Object.keys(saved.games).length + ' with progress';
+    if (!list.length) document.getElementById('grid').innerHTML = '<p class="empty">No games match this view.</p>';
+    bindImages();
+  }
+
+  // Lazy-load thumbnails; fall back to hiding the image if it fails.
+  const io = ('IntersectionObserver' in window) ? new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (!en.isIntersecting) return;
+      const img = en.target;
+      img.onload = () => img.classList.add('loaded');
+      img.onerror = () => { img.style.display = 'none'; };
+      img.src = img.dataset.src;
+      io.unobserve(img);
+    });
+  }, { rootMargin: '200px' }) : null;
+  function bindImages() {
+    document.querySelectorAll('#grid .thumb').forEach(img => {
+      if (io) io.observe(img); else { img.src = img.dataset.src; img.classList.add('loaded'); }
+    });
+  }
+
+  function openGame(id) {
+    const g = BY_ID[id];
+    if (!g) return;
+    current = g;
+    const i = info(id);
+    document.getElementById('pTitle').textContent = g.name;
+    document.getElementById('pThumb').src = g.thumb;
+    document.getElementById('pPlays').textContent = (i.plays ? 'Played ' + i.plays + ' time' + (i.plays === 1 ? '' : 's') : 'Not played yet');
+    document.getElementById('pFav').textContent = i.fav ? '★ Favorited' : '☆ Favorite';
+    document.getElementById('frame').removeAttribute('src');
+    document.getElementById('cover').classList.remove('hidden');
+    document.getElementById('player').classList.remove('hidden');
+  }
+
+  function startGame() {
+    if (!current) return;
+    const i = info(current.id);
+    i.plays += 1;
+    i.last = Date.now();
+    saved.recent = [current.id].concat(saved.recent.filter(x => x !== current.id)).slice(0, 20);
+    persist();
+    document.getElementById('frame').src = current.game;
+    document.getElementById('cover').classList.add('hidden');
+    document.getElementById('frame').focus();
+  }
+
+  function closePlayer() {
+    document.getElementById('frame').removeAttribute('src');
+    document.getElementById('player').classList.add('hidden');
+    current = null;
+    render();
+  }
+
+  function toggleFav() {
+    if (!current) return;
+    const i = info(current.id);
+    i.fav = !i.fav;
+    persist();
+    document.getElementById('pFav').textContent = i.fav ? '★ Favorited' : '☆ Favorite';
+  }
+
+  function randomGame() {
+    const list = visible();
+    const pool = list.length ? list : GAMES;
+    openGame(pool[Math.floor(Math.random() * pool.length)].id);
+  }
+
+  function toggleFullscreen() {
+    const el = document.getElementById('player');
+    if (!document.fullscreenElement) el.requestFullscreen?.(); else document.exitFullscreen?.();
+  }
+
+  let toastTimer;
+  function toast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'toast';
+      t.style.cssText = 'position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ok);color:#06210f;padding:9px 14px;border-radius:8px;font-size:14px;z-index:30;transition:opacity .25s';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg; t.style.opacity = '1';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.style.opacity = '0'; }, 1500);
+  }
+
+  // Events
+  document.getElementById('grid').addEventListener('click', e => {
+    const b = e.target.closest('.card');
+    if (b) openGame(b.dataset.id);
+  });
+  document.getElementById('search').oninput = e => { query = e.target.value; shown = PAGE; render(); };
+  document.querySelectorAll('.tabs .btn').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.tabs .btn').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); filter = b.dataset.f; shown = PAGE; render();
+  });
+  document.getElementById('moreBtn').onclick = () => { shown += PAGE; render(); };
+  document.getElementById('randomBtn').onclick = randomGame;
+  document.getElementById('playBtn').onclick = startGame;
+  document.getElementById('backBtn').onclick = closePlayer;
+  document.getElementById('pFav').onclick = toggleFav;
+  document.getElementById('pFull').onclick = toggleFullscreen;
+  document.getElementById('resetBtn').onclick = () => {
+    if (!confirm('Clear all saved plays, favorites and recent games?')) return;
+    saved = { games: {}, recent: [] }; persist(); render(); toast('Progress cleared');
+  };
+  document.getElementById('quickExit').onclick = () => { location.href = 'https://www.google.com'; };
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !document.getElementById('player').classList.contains('hidden')) { closePlayer(); return; }
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    if (e.key === '/') { e.preventDefault(); document.getElementById('search').focus(); }
+    if (e.key === 'r' || e.key === 'R') randomGame();
+    if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
